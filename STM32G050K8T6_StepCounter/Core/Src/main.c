@@ -22,6 +22,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ADXL335.h"
+#include "ssd1306.h"
+#include "ssd1306_fonts.h"
+#include "stdio.h"
+#include "string.h"
 
 /* USER CODE END Includes */
 
@@ -32,6 +36,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define fontsize Font_7x10
+#define fontcolor White
 
 /* USER CODE END PD */
 
@@ -54,7 +60,14 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+// USART2 Bluetooth Data Buffer
 char data[20];
+
+// TIM3 Encoder Data Variables
+uint8_t encoder_char[4];
+uint8_t encoder_val = 0;
+char button_char[4];
+uint8_t button_val;
 
 /* USER CODE END PV */
 
@@ -68,6 +81,11 @@ static void MX_SPI2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim);
+void screen0();
+void screen1();
+void screen2();
+
 
 /* USER CODE END PFP */
 
@@ -121,6 +139,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	// ADXL Code to get data + send data via Bluetooth
 	ADXL335_convert_ADCtomV(&ADXL335, &hadc1);
 	//ADXL335_convert_mVtog(&ADXL335); // Let Matlab do the calculations passing adc via bluetooth
 	ADXL335_sendSensorData(&ADXL335, data, sizeof(data));
@@ -131,6 +150,39 @@ int main(void)
 	HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_0);
 
 	HAL_Delay(50); // f = 1/t, t = 50ms, f = 20Hz
+
+	// Encoder Code to check button press
+	button_val = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4);
+
+	if(!button_val)
+	{
+	 HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_8);
+	 HAL_Delay(250);
+
+	 // If button is pressed, it goes to home page (help(1/2))
+	  __HAL_TIM_SET_COUNTER(&htim3, 0);
+	  encoder_val = 0;
+	}
+
+	// Encoder Code to navigate between screens
+	  if (encoder_val >= 0 && encoder_val < 10)
+	  {
+	      screen0();
+	  }
+	  else if (encoder_val >= 10 && encoder_val < 20)
+	  {
+	      screen1();
+	  }
+	  else if (encoder_val >= 20 && encoder_val < 30)
+	  {
+	      screen2();
+	  }
+	  else if (encoder_val > 30) // Reset back counter to 0 if it goes past encoder_value of 30
+	  {
+		  __HAL_TIM_SET_COUNTER(&htim3, 0);
+		  encoder_val = 0;
+	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -503,7 +555,72 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+	encoder_val = __HAL_TIM_GET_COUNTER(htim);
+}
 
+void screen0()
+{
+	  ssd1306_Fill(Black);
+	  ssd1306_SetCursor(2, 0);
+	  ssd1306_WriteString("Help Menu (1/2): ", fontsize, fontcolor);
+	  ssd1306_SetCursor(2, 12);
+	  ssd1306_WriteString("Twist encoder knob", fontsize, fontcolor);
+	  ssd1306_SetCursor(2, 24);
+	  ssd1306_WriteString("to navigate this", fontsize, fontcolor);
+	  ssd1306_SetCursor(2,36);
+	  ssd1306_WriteString("device's different", fontsize, fontcolor);
+	  ssd1306_SetCursor(2,48);
+	  ssd1306_WriteString("functionalities", fontsize, fontcolor);
+
+	  ssd1306_UpdateScreen();
+}
+
+void screen1()
+{
+	  ssd1306_Fill(Black);
+	  ssd1306_SetCursor(2, 0);
+	  ssd1306_WriteString("Help Menu (2/2): ", fontsize, fontcolor);
+	  ssd1306_SetCursor(2, 12);
+	  ssd1306_WriteString("The encoder knob", fontsize, fontcolor);
+	  ssd1306_SetCursor(2, 24);
+	  ssd1306_WriteString("can be pressed to", fontsize, fontcolor);
+	  ssd1306_SetCursor(2,36);
+	  ssd1306_WriteString("select the current", fontsize, fontcolor);
+	  ssd1306_SetCursor(2,48);
+	  ssd1306_WriteString("functionality", fontsize, fontcolor);
+
+	  ssd1306_UpdateScreen();
+}
+
+
+void screen2()
+{
+	  ssd1306_Fill(Black);
+	  ssd1306_SetCursor(2, 0);
+	  ssd1306_WriteString("Lab 2 Group 9", fontsize, fontcolor);
+	  ssd1306_SetCursor(2, 12);
+	  ssd1306_WriteString("Hello From ", fontsize, fontcolor);
+	  ssd1306_SetCursor(2, 24);
+	  ssd1306_WriteString("STM32G050F6 :P ", fontsize, fontcolor);
+
+	  snprintf((char *)encoder_char, sizeof(encoder_char), "%2u", encoder_val); // Cast char* type to change encoder_char
+
+	  ssd1306_SetCursor(2,36);
+	  ssd1306_WriteString("Encoder: ", fontsize, fontcolor);
+	  ssd1306_SetCursor(92,36);
+	  ssd1306_WriteString((char *)encoder_char, fontsize, fontcolor); // Cast char* type to change encoder_char
+
+	  snprintf(button_char, sizeof(button_char), "%d", !button_val);
+
+	  ssd1306_SetCursor(2,48);
+	  ssd1306_WriteString("Button: ", fontsize, fontcolor);
+	  ssd1306_SetCursor(120,48);
+	  ssd1306_WriteString(button_char, fontsize, fontcolor);
+
+	  ssd1306_UpdateScreen();
+}
 /* USER CODE END 4 */
 
 /**
