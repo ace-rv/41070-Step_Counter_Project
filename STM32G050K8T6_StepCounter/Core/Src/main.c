@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ADXL335.h"
 
 /* USER CODE END Includes */
 
@@ -52,6 +53,8 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
+char data[20];
 
 /* USER CODE END PV */
 
@@ -110,12 +113,24 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  ADXL335_t ADXL335; // Create ADXL335 sensor
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	ADXL335_convert_ADCtomV(&ADXL335, &hadc1);
+	//ADXL335_convert_mVtog(&ADXL335); // Let Matlab do the calculations passing adc via bluetooth
+	ADXL335_sendSensorData(&ADXL335, data, sizeof(data));
+
+	HAL_UART_Transmit(&huart2, (uint8_t*)data, sizeof(data), HAL_MAX_DELAY);
+
+	// Set High/Low signal from PA0
+	HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_0);
+
+	HAL_Delay(50); // f = 1/t, t = 50ms, f = 20Hz
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

@@ -1,0 +1,9 @@
+../Core/Src/ADXL335.c:13:6:ADXL335_convert_ADCtomV	2
+../Core/Src/ADXL335.c:22:6:ADXL335_convert_mVtog	2
+../Core/Src/ADXL335.c:38:6:ADXL335_runSelfTest	4
+../Core/Src/ADXL335.c:57:6:ADXL335_checkSelfTestIfInRange	4
+../Core/Src/ADXL335.c:73:6:ADXL335_runCalibration	1
+../Core/Src/ADXL335.c:97:6:ADXL335_sendSensorData	1
+../Core/Src/ADXL335.c:114:11:ADXL335_getADC	1
+../Core/Src/ADXL335.c:119:8:ADXL335_getmV	1
+../Core/Src/ADXL335.c:124:8:ADXL335_getg	1
