@@ -18,7 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-
+#include <stdio.h>
+#include <stdbool.h>
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -31,6 +32,22 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define ADC_NUM_CONVERSIONS 3
+#define SELF_TEST 0
+#define ADC_RAW_TO_VOLTAGE 1.0071108127
+#define VOLTAGE_INPUT 3.3
+#define RESOLUTION 4096
+#define g_BIAS_XY 1.65
+#define g_BIAS_Z 1.8
+#define SENSITIVITY 300
+#define SELF_TEST_GPIO 4
+#define SELF_TEST_MIN {-150, 150, 150}
+#define SELF_TEST_TYP {-325, 325, 550}
+#define SELF_TEST_MAX {-600, 600, 1000}
+#define NUM_SAMPLES 100
+#define G_TOLERANCE 0.05
+
+float g_Bias[3] = {g_BIAS_XY, g_BIAS_XY, g_BIAS_Z};
 
 /* USER CODE END PD */
 
@@ -52,7 +69,17 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+volatile uint16_t adcData[ADC_NUM_CONVERSIONS];
+volatile float adxlVoltage[ADC_NUM_CONVERSIONS];
+volatile float gData[ADC_NUM_CONVERSIONS];
+volatile float VOLTAGE_ST[ADC_NUM_CONVERSIONS];
+volatile float VOLTAGE_BUFFER_BEFORE[ADC_NUM_CONVERSIONS];
+volatile float VOLTAGE_BUFFER_AFTER[ADC_NUM_CONVERSIONS];
+const uint16_t SelfTestMin[ADC_NUM_CONVERSIONS] = SELF_TEST_MIN;
+const uint16_t SelfTestTyp[ADC_NUM_CONVERSIONS] = SELF_TEST_TYP;
+const uint16_t SelfTestMax[ADC_NUM_CONVERSIONS] = SELF_TEST_MAX;
+volatile uint8_t CONVERSION = 0;
+uint8_t pass = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,6 +97,108 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	CONVERSION = 1;
+}
+
+void Calculate_g(void){
+	for(int i = 0; i < ADC_NUM_CONVERSIONS; i++){
+	  adxlVoltage[i] = adcData[i] * VOLTAGE_INPUT/RESOLUTION * 1000;
+	  gData[i] = (adxlVoltage[i] - g_Bias[i])/SENSITIVITY;
+	}
+}
+
+void Perform_Self_Test(void){
+	if(SELF_TEST) {
+	  for(int i = 0; i < ADC_NUM_CONVERSIONS; i++) {
+		  VOLTAGE_BUFFER_AFTER[i] = adxlVoltage[i];
+	//	          printf("Axis , VOLTAGE_BUFFER_AFTER = %.2f\n", i, VOLTAGE_BUFFER_AFTER[i]);
+	  }
+
+	  for(int i = 0; i < ADC_NUM_CONVERSIONS; i++) {
+		  VOLTAGE_ST[i] = VOLTAGE_BUFFER_AFTER[i] - VOLTAGE_BUFFER_BEFORE[i];
+	//	          printf("Axis %d: VOLTAGE_ST = %.2f\n", i, VOLTAGE_ST[i]);
+
+		  if(VOLTAGE_ST[i] >= SelfTestMin[i] && VOLTAGE_ST[i] <= SelfTestMax[i]) {
+			  printf("Self-test PASSED");
+		  }
+		  else {
+			  printf("Self-test FAILED");
+		  }
+	  }
+	}
+	else {
+	  for(int i = 0; i < ADC_NUM_CONVERSIONS; i++) {
+		  VOLTAGE_BUFFER_BEFORE[i] = adxlVoltage[i];
+	//	          printf("Axis %d: VOLTAGE_BUFFER_BEFORE = %.2f\n", i, VOLTAGE_BUFFER_BEFORE[i]);
+
+	  }
+	}
+}
+
+// Keeps collecting samples every conversion
+void Collect_Samples_mV(float *samples, int axis) {
+	for(int i = 0; i < NUM_SAMPLES; i++) {
+		while(!CONVERSION); //while ADC complete callback has not achieved
+		samples[i] = adxlVoltage[axis];
+		CONVERSION = 0;
+	}
+}
+
+// Get average data of mV
+float Calculate_Average_mV(float *samples) {
+	float sum = 0;
+	for(int i = 0; i < NUM_SAMPLES; i++) {
+		sum += samples[i];
+	}
+	return sum /NUM_SAMPLES;
+}
+
+// Keeps adjusting bias until g is +-1g
+void Adjust_Bias_And_Recalculate(int axis) {
+	bool pass = false;
+	int maxIteration = 100;
+	int iteration = 0;
+	float g;
+
+	while(!pass &&iteration < maxIteration){
+		adxlVoltage[axis] = adcData[axis] * VOLTAGE_INPUT/RESOLUTION * 1000;
+		g = (adxlVoltage[axis] - g_Bias[axis])/SENSITIVITY;
+
+		// if not +-0.05 from +-1g, extract g_Bias
+		if(g < 0.95 || g > 1.05) {
+			g_Bias[axis] = adxlVoltage[axis] - SENSITIVITY;
+		}
+		else if(g < -1.05 || g > -0.95) {
+			g_Bias[axis] = adxlVoltage[axis] + SENSITIVITY;
+		}
+
+		// adjust g according to g_Bias
+		gData[axis] = (adxlVoltage[axis] - g_Bias[axis]) / SENSITIVITY;
+		g = gData[axis];
+		printf("Calculating...");
+
+		if(0.95 <= g && g <= 1.05 || -1.05 <= g && g <= -0.95) {
+			pass = true;
+		}
+		iteration++;
+	}
+	if (pass) {
+		printf("Calibration PASSED");
+	}
+}
+
+void Calibrate_ADXL(int axis) {
+	float samples[NUM_SAMPLES];
+
+	for(int i = 0; i < ADC_NUM_CONVERSIONS; i++) {
+		Collect_Samples_mV(samples, i);
+		g_Bias[i] = Calculate_Average_mV(samples);
+		Adjust_Bias_And_Recalculate(i);
+	}
+}
+
+//void SimulateADCData(void); //Simulate ADC data for testing
 
 /* USER CODE END 0 */
 
@@ -109,6 +238,11 @@ int main(void)
   MX_TIM3_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t *) adcData, ADC_NUM_CONVERSIONS);
+  HAL_TIM_Base_Start(&htim2);
+
+  void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
+  Calibrate_ADXL(ADC_NUM_CONVERSIONS);
 
   /* USER CODE END 2 */
 
@@ -119,6 +253,14 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  SimulateADCData();
+	  if(CONVERSION) {
+		  Calculate_g();
+	  }
+	  if(SELF_TEST) {
+		  Perform_Self_Test();
+	  }
+
 //	  hi test2
   }
   /* USER CODE END 3 */
