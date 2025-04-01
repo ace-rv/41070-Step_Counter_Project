@@ -32,7 +32,6 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define ADC_NUM_CONVERSIONS 3
-#define SELF_TEST 0
 #define ADC_RAW_TO_VOLTAGE 1.0071108127
 #define VOLTAGE_INPUT 3.3
 #define RESOLUTION 4096
@@ -79,6 +78,7 @@ const uint16_t SelfTestTyp[ADC_NUM_CONVERSIONS] = SELF_TEST_TYP;
 const uint16_t SelfTestMax[ADC_NUM_CONVERSIONS] = SELF_TEST_MAX;
 volatile uint8_t CONVERSION = 0;
 uint8_t pass = 0;
+volatile uint8_t SELF_TEST = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -107,7 +107,17 @@ void Calculate_g(void){
 	}
 }
 
+void ToggleLED_ST(void){
+	 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
+	 SELF_TEST = !SELF_TEST;                   // Toggle self-test flag
+	 HAL_Delay(500);
+}
+
 void Perform_Self_Test(void){
+	self_test_finished = false;
+	//screen1();
+	ToggleLED_ST();
+
 	if(SELF_TEST) {
 	  for(int i = 0; i < ADC_NUM_CONVERSIONS; i++) {
 		  VOLTAGE_BUFFER_AFTER[i] = adxlVoltage[i];
@@ -120,17 +130,20 @@ void Perform_Self_Test(void){
 
 		  if(VOLTAGE_ST[i] >= SelfTestMin[i] && VOLTAGE_ST[i] <= SelfTestMax[i]) {
 			  printf("Self-test PASSED");
+			  self_test_finished = true;
 		  }
 		  else {
 			  printf("Self-test FAILED");
 		  }
 	  }
 	}
+
+	//	(VOLTAGE_BUFFER_BEFORE) is updated when the self-test is off.
+	//	Once you turn self-test on, you use the previously stored baseline to compare with the new measurement.
+
 	else {
 	  for(int i = 0; i < ADC_NUM_CONVERSIONS; i++) {
 		  VOLTAGE_BUFFER_BEFORE[i] = adxlVoltage[i];
-	//	          printf("Axis %d: VOLTAGE_BUFFER_BEFORE = %.2f\n", i, VOLTAGE_BUFFER_BEFORE[i]);
-
 	  }
 	}
 }
@@ -139,7 +152,7 @@ void Perform_Self_Test(void){
 void Collect_Samples_mV(float *samples, int axis) {
 	for(int i = 0; i < NUM_SAMPLES; i++) {
 		while(!CONVERSION); //while ADC complete callback has not achieved
-		samples[i] = adxlVoltage[axis];
+		samples[i] = adxlVoltage[axis]; //collect data before conversion completed
 		CONVERSION = 0;
 	}
 }
@@ -156,11 +169,9 @@ float Calculate_Average_mV(float *samples) {
 // Keeps adjusting bias until g is +-1g
 void Adjust_Bias_And_Recalculate(int axis) {
 	bool pass = false;
-	int maxIteration = 100;
-	int iteration = 0;
 	float g;
 
-	while(!pass &&iteration < maxIteration){
+	while(!pass){
 		adxlVoltage[axis] = adcData[axis] * VOLTAGE_INPUT/RESOLUTION * 1000;
 		g = (adxlVoltage[axis] - g_Bias[axis])/SENSITIVITY;
 
@@ -180,7 +191,6 @@ void Adjust_Bias_And_Recalculate(int axis) {
 		if(0.95 <= g && g <= 1.05 || -1.05 <= g && g <= -0.95) {
 			pass = true;
 		}
-		iteration++;
 	}
 	if (pass) {
 		printf("Calibration PASSED");
@@ -188,6 +198,9 @@ void Adjust_Bias_And_Recalculate(int axis) {
 }
 
 void Calibrate_ADXL(int axis) {
+	calibrate_finished = false;
+//	screen4();
+//	screen5();
 	float samples[NUM_SAMPLES];
 
 	for(int i = 0; i < ADC_NUM_CONVERSIONS; i++) {
@@ -252,13 +265,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  SimulateADCData();
-	  if(CONVERSION) {
+//	  SimulateADCData();
+	  if(CONVERSION) { 			// if receive conversion value
 		  Calculate_g();
 	  }
-	  if(SELF_TEST) {
-		  Perform_Self_Test();
-	  }
+	  Perform_Self_Test();
+
+	  Calibrate_ADXL();
 
 //	  hi test2
   }
